@@ -134,3 +134,5 @@ if __name__ == "__main__":
     print("Vulnerable target running at http://127.0.0.1:5001")
     print("FOR LOCAL TESTING ONLY — do not expose this port publicly.")
     app.run(port=5001, debug=False)
+else:
+    init_db()
