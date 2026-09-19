@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+httpx
+scikit-learn
+faiss-cpu
+numpy
+joblib
+flask
+pydantic
+# Optional — only needed if you set ANTHROPIC_API_KEY / OPENAI_API_KEY
+# to enable real LLM-generated test cases instead of the template fallback:
+# anthropic
+# openai

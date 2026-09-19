@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SentinelAI — Autonomous API Security Scanner</title>
+<meta name="description" content="SentinelAI: an autonomous AI agent that generates and runs OWASP-grounded security tests against your REST APIs."/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bg: '#0A0E13',
+          surface: '#121821',
+          'surface-raised': '#1A222C',
+          'surface-hi': '#232D39',
+          border: '#26303C',
+          'border-hi': '#37444F',
+          text: '#E4E9EF',
+          muted: '#8B96A3',
+          faint: '#5C6773',
+          accent: '#17D6C4',
+          'accent-dark': '#083832',
+          critical: '#FF4757',
+          high: '#FF9F43',
+          medium: '#E8C547',
+          low: '#2ED573',
+        },
+        fontFamily: {
+          display: ['"Space Grotesk"', 'sans-serif'],
+          body: ['Inter', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  body { background: #0A0E13; font-family: 'Inter', sans-serif; }
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20; font-size: 20px; vertical-align: middle; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #0A0E13; }
+  ::-webkit-scrollbar-thumb { background: #26303C; border-radius: 4px; }
+  .grid-overlay {
+    background-image: linear-gradient(#17D6C4 1px, transparent 1px), linear-gradient(90deg, #17D6C4 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .view { display: none; }
+  .view.active { display: block; }
+  .blink { animation: blink 1s step-start infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .log-line { opacity: 0; animation: fadeIn 0.25s forwards; }
+  @keyframes fadeIn { to { opacity: 1; } }
+  .progress-fill { transition: width 0.4s ease; }
+  .severity-pulse { animation: pulseScale 0.4s ease; }
+  @keyframes pulseScale { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }
+  .nav-item.active { background: #1A222C; color: #17D6C4; border-left: 2px solid #17D6C4; }
+  .nav-item { border-left: 2px solid transparent; }
+  .row-hover:hover { background: #171F29; cursor: pointer; }
+  textarea, input { outline: none; }
+  .checkbox-card:has(input:checked) { border-color: #17D6C4; background: #0F2724; }
+</style>
+</head>
+<body class="text-text min-h-screen">
+
+<div class="flex min-h-screen">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="w-64 shrink-0 bg-surface border-r border-border flex flex-col">
+    <div class="h-16 flex items-center gap-2 px-6 border-b border-border">
+      <span class="material-symbols-outlined text-accent">shield_with_heart</span>
+      <span class="font-display font-bold text-lg tracking-tight">Sentinel<span class="text-accent">AI</span></span>
+    </div>
+    <nav class="flex-1 py-6 flex flex-col gap-1">
+      <button class="nav-item active flex items-center gap-3 px-6 py-3 text-sm font-medium text-muted hover:text-text transition-colors" data-view="new-scan" onclick="switchView('new-scan')">
+        <span class="material-symbols-outlined text-[18px]">radar</span> New Scan
+      </button>
+      <button class="nav-item flex items-center gap-3 px-6 py-3 text-sm font-medium text-muted hover:text-text transition-colors" data-view="results" onclick="switchView('results')">
+        <span class="material-symbols-outlined text-[18px]">dashboard</span> Results Dashboard
+      </button>
+      <button class="nav-item flex items-center gap-3 px-6 py-3 text-sm font-medium text-muted hover:text-text transition-colors" data-view="history" onclick="switchView('history')">
+        <span class="material-symbols-outlined text-[18px]">history</span> Scan History
+      </button>
+    </nav>
+    <div class="p-6 border-t border-border">
+      <div class="flex items-center gap-2 text-xs font-mono text-faint">
+        <span class="w-2 h-2 rounded-full bg-low"></span> agent runtime: idle
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="flex-1 min-w-0">
+
+    <!-- ============ VIEW: NEW SCAN ============ -->
+    <section id="view-new-scan" class="view active">
+      <div class="relative overflow-hidden border-b border-border">
+        <div class="absolute inset-0 grid-overlay opacity-[0.03] pointer-events-none"></div>
+        <div class="relative px-10 py-10 max-w-4xl">
+          <span class="font-mono text-xs text-accent tracking-widest">// new_scan.init</span>
+          <h1 class="font-display font-bold text-3xl mt-2 mb-2">Configure a new scan</h1>
+          <p class="text-muted text-sm leading-relaxed">Point SentinelAI at a target API. The agent generates OWASP-grounded test cases with RAG, executes them, and analyzes every response for vulnerabilities.</p>
+        </div>
+      </div>
+
+      <div class="p-10 max-w-4xl flex flex-col gap-8">
+
+        <div class="flex flex-col gap-2">
+          <label class="font-mono text-xs text-muted uppercase tracking-wider">Target API base URL</label>
+          <input id="target-url" type="text" value="https://api.staging.acme-shop.dev/v1" class="bg-surface-raised border border-border focus:border-accent rounded-lg px-4 py-3 text-sm font-mono text-text transition-colors"/>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label class="font-mono text-xs text-muted uppercase tracking-wider">OpenAPI / Swagger spec (optional — paste JSON or YAML)</label>
+          <textarea rows="5" placeholder="paste your openapi.json here, or leave blank to let the agent crawl the target..." class="bg-surface-raised border border-border focus:border-accent rounded-lg px-4 py-3 text-sm font-mono text-muted resize-none transition-colors"></textarea>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          <label class="font-mono text-xs text-muted uppercase tracking-wider">OWASP Top 10 categories to test</label>
+          <div id="owasp-grid" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+        </div>
+
+        <button onclick="startScan()" class="self-start flex items-center gap-2 bg-accent text-accent-dark font-bold text-sm px-8 py-4 rounded-lg hover:scale-[1.02] transition-transform shadow-lg shadow-accent/10">
+          <span class="material-symbols-outlined text-[20px]">play_arrow</span> RUN SCAN
+        </button>
+      </div>
+    </section>
+
+    <!-- ============ VIEW: PROGRESS ============ -->
+    <section id="view-progress" class="view">
+      <div class="px-10 py-10 border-b border-border">
+        <span class="font-mono text-xs text-accent tracking-widest">// scan_engine.run</span>
+        <h1 class="font-display font-bold text-3xl mt-2 mb-1">Scan in progress</h1>
+        <p class="text-muted text-sm font-mono" id="progress-target">target: —</p>
+      </div>
+
+      <div class="p-10 grid grid-cols-3 gap-8">
+        <div class="col-span-2 flex flex-col gap-6">
+          <div>
+            <div class="flex justify-between text-xs font-mono text-muted mb-2">
+              <span id="progress-label">Generating test cases…</span>
+              <span id="progress-pct">0%</span>
+            </div>
+            <div class="h-1.5 bg-surface-raised rounded-full overflow-hidden">
+              <div id="progress-bar" class="progress-fill h-full bg-accent" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div class="bg-surface border border-border rounded-lg overflow-hidden">
+            <div class="flex items-center gap-2 px-5 py-3 bg-surface-raised border-b border-border">
+              <span class="w-2.5 h-2.5 rounded-full bg-critical/60"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-medium/60"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-low/60"></span>
+              <span class="font-mono text-xs text-faint ml-2">agent_loop.log</span>
+            </div>
+            <div id="log-feed" class="p-5 font-mono text-[13px] leading-relaxed h-80 overflow-y-auto flex flex-col gap-1"></div>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          <span class="font-mono text-xs text-muted uppercase tracking-wider mb-1">Findings so far</span>
+          <div id="live-counters" class="flex flex-col gap-3"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ VIEW: RESULTS ============ -->
+    <section id="view-results" class="view">
+      <div class="px-10 py-10 border-b border-border flex items-center justify-between">
+        <div>
+          <span class="font-mono text-xs text-accent tracking-widest">// results.summary</span>
+          <h1 class="font-display font-bold text-3xl mt-2">Results dashboard</h1>
+          <p class="text-muted text-sm font-mono mt-1" id="results-target">target: —</p>
+        </div>
+        <button onclick="switchView('new-scan')" class="flex items-center gap-2 border border-border-hi hover:border-accent text-sm font-medium px-5 py-3 rounded-lg transition-colors">
+          <span class="material-symbols-outlined text-[18px]">add</span> New Scan
+        </button>
+      </div>
+
+      <div class="p-10 flex flex-col gap-8">
+        <div id="summary-cards" class="grid grid-cols-2 md:grid-cols-5 gap-4"></div>
+
+        <div class="bg-surface border border-border rounded-lg overflow-hidden">
+          <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+            <span class="font-display font-semibold">Findings</span>
+            <div class="flex gap-2" id="severity-filters"></div>
+          </div>
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-muted font-mono text-xs uppercase tracking-wider border-b border-border">
+                <th class="px-6 py-3 font-medium">Severity</th>
+                <th class="px-6 py-3 font-medium">Endpoint</th>
+                <th class="px-6 py-3 font-medium">Vulnerability</th>
+                <th class="px-6 py-3 font-medium">OWASP Category</th>
+                <th class="px-6 py-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody id="findings-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ VIEW: DETAIL ============ -->
+    <section id="view-detail" class="view">
+      <div class="px-10 py-8 border-b border-border">
+        <button onclick="switchView('results')" class="flex items-center gap-1 text-muted hover:text-accent text-sm font-medium mb-4 transition-colors">
+          <span class="material-symbols-outlined text-[18px]">arrow_back</span> Back to results
+        </button>
+        <div id="detail-header"></div>
+      </div>
+      <div class="p-10 grid grid-cols-2 gap-6" id="detail-body"></div>
+    </section>
+
+    <!-- ============ VIEW: HISTORY ============ -->
+    <section id="view-history" class="view">
+      <div class="px-10 py-10 border-b border-border">
+        <span class="font-mono text-xs text-accent tracking-widest">// scan_history.list</span>
+        <h1 class="font-display font-bold text-3xl mt-2">Scan history</h1>
+        <p class="text-muted text-sm mt-1">Every scan the agent has run against your registered targets.</p>
+      </div>
+      <div class="p-10">
+        <div class="bg-surface border border-border rounded-lg overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-muted font-mono text-xs uppercase tracking-wider border-b border-border">
+                <th class="px-6 py-3 font-medium">Date</th>
+                <th class="px-6 py-3 font-medium">Target</th>
+                <th class="px-6 py-3 font-medium">Endpoints Tested</th>
+                <th class="px-6 py-3 font-medium">Findings</th>
+                <th class="px-6 py-3 font-medium">Risk Score</th>
+                <th class="px-6 py-3 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody id="history-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+// ============================================================
+// SentinelAI frontend — talks to the real backend at API_BASE.
+// Run the backend first: `uvicorn main:app --port 8000` inside app/
+// The only mock data left is Scan History, since the backend doesn't
+// persist scans across restarts yet (see README "Next steps").
+// ============================================================
+
+const API_BASE = 'http://127.0.0.1:8000';
+
+const OWASP_CATEGORIES = [
+  'Broken Access Control', 'Cryptographic Failures', 'Injection',
+  'Insecure Design', 'Security Misconfiguration', 'Vulnerable and Outdated Components',
+  'Identification and Authentication Failures', 'Software and Data Integrity Failures',
+  'Security Logging and Monitoring Failures', 'Server-Side Request Forgery'
+];
+
+const SEVERITY_STYLE = {
+  Critical: { color: 'critical', bg: 'bg-critical/10', border: 'border-critical/30', text: 'text-critical' },
+  High:     { color: 'high',     bg: 'bg-high/10',     border: 'border-high/30',     text: 'text-high' },
+  Medium:   { color: 'medium',   bg: 'bg-medium/10',   border: 'border-medium/30',   text: 'text-medium' },
+  Low:      { color: 'low',      bg: 'bg-low/10',       border: 'border-low/30',       text: 'text-low' },
+};
+
+// Scan History has no backend persistence yet — kept as labeled sample data
+// until you add a /scans list endpoint + a database. See README.
+const HISTORY = [
+  { date: '2026-08-09', target: 'api.staging.acme-shop.dev', endpoints: 34, findings: 7, risk: 78, color: 'critical' },
+  { date: '2026-08-02', target: 'api.staging.acme-shop.dev', endpoints: 34, findings: 11, risk: 86, color: 'critical' },
+];
+
+let CURRENT_RESULT = null;
+let activeFilter = 'All';
+
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navBtn = document.querySelector(`.nav-item[data-view="${name}"]`);
+  if (navBtn) navBtn.classList.add('active');
+}
+
+// ---- New Scan: OWASP checkbox grid ----
+function renderOwaspGrid() {
+  const grid = document.getElementById('owasp-grid');
+  grid.innerHTML = OWASP_CATEGORIES.map((cat, i) => `
+    <label class="checkbox-card flex items-center gap-2 border border-border rounded-lg px-4 py-3 text-sm cursor-pointer transition-colors">
+      <input type="checkbox" value="${cat}" ${i < 6 ? 'checked' : ''} class="accent-accent w-4 h-4"/>
+      <span>${cat}</span>
+    </label>
+  `).join('');
+}
+
+function getSelectedCategories() {
+  return Array.from(document.querySelectorAll('#owasp-grid input:checked')).map(el => el.value);
+}
+
+// ---- Real scan: POST /scans, then consume the SSE progress stream ----
+async function startScan() {
+  const url = document.getElementById('target-url').value || 'http://127.0.0.1:5001';
+  document.getElementById('progress-target').textContent = 'target: ' + url;
+  document.getElementById('results-target').textContent = 'target: ' + url;
+  document.getElementById('log-feed').innerHTML = '';
+  document.getElementById('progress-bar').style.width = '8%';
+  document.getElementById('progress-pct').textContent = '';
+  document.getElementById('progress-label').textContent = 'Starting scan…';
+
+  const counters = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  renderLiveCounters(counters);
+  switchView('progress');
+
+  let scanId;
+  try {
+    const res = await fetch(`${API_BASE}/scans`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_url: url, categories: getSelectedCategories() }),
+    });
+    const data = await res.json();
+    scanId = data.scan_id;
+  } catch (err) {
+    logLine(`Could not reach the backend at ${API_BASE}. Is 'uvicorn main:app --port 8000' running?`, true);
+    document.getElementById('progress-label').textContent = 'Backend unreachable';
+    return;
+  }
+
+  const evtSource = new EventSource(`${API_BASE}/scans/${scanId}/stream`);
+  let pct = 8;
+
+  evtSource.onmessage = (e) => {
+    const event = JSON.parse(e.data);
+
+    if (event.type === 'done') {
+      document.getElementById('progress-bar').style.width = '100%';
+      document.getElementById('progress-label').textContent = 'Scan complete';
+      evtSource.close();
+      setTimeout(async () => {
+        await fetchAndRenderResults(scanId);
+        switchView('results');
+      }, 400);
+      return;
+    }
+
+    if (event.type === 'error') {
+      logLine(event.message, true);
+      document.getElementById('progress-label').textContent = 'Scan error';
+      evtSource.close();
+      return;
+    }
+
+    if (event.type === 'info') {
+      logLine(event.message);
+    }
+
+    if (event.type === 'test_result') {
+      logLine(`${event.flagged ? '⚠ FLAGGED' : 'checked'} — ${event.pattern} (${event.owasp_category}), confidence ${event.confidence}`);
+      if (event.flagged && event.severity) {
+        counters[event.severity] = (counters[event.severity] || 0) + 1;
+        renderLiveCounters(counters, event.severity);
+      }
+    }
+
+    pct = Math.min(pct + 6, 96);
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('progress-label').textContent = 'Executing agent loop…';
+  };
+
+  evtSource.onerror = () => {
+    evtSource.close();
+  };
+}
+
+function logLine(text, isError) {
+  const feed = document.getElementById('log-feed');
+  const line = document.createElement('div');
+  line.className = `log-line ${isError ? 'text-critical' : 'text-muted'}`;
+  line.innerHTML = `<span class="text-accent">&gt;</span> ${text}`;
+  feed.appendChild(line);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function renderLiveCounters(counters, pulseKey) {
+  const el = document.getElementById('live-counters');
+  el.innerHTML = ['Critical', 'High', 'Medium', 'Low'].map(sev => {
+    const s = SEVERITY_STYLE[sev];
+    const pulse = pulseKey === sev ? 'severity-pulse' : '';
+    return `
+      <div class="flex items-center justify-between ${s.bg} border ${s.border} rounded-lg px-4 py-3 ${pulse}">
+        <span class="text-sm font-medium ${s.text}">${sev}</span>
+        <span class="font-mono font-bold text-lg ${s.text}">${counters[sev] || 0}</span>
+      </div>`;
+  }).join('');
+}
+
+// ---- Results (fetched from the real backend after a scan completes) ----
+function severityBadge(sev) {
+  const s = SEVERITY_STYLE[sev];
+  return `<span class="inline-flex items-center gap-1.5 ${s.bg} ${s.text} border ${s.border} px-2.5 py-1 rounded text-xs font-bold font-mono uppercase tracking-wide">
+    <span class="w-1.5 h-1.5 rounded-full bg-current"></span>${sev}
+  </span>`;
+}
+
+async function fetchAndRenderResults(scanId) {
+  const res = await fetch(`${API_BASE}/scans/${scanId}`);
+  const data = await res.json();
+  CURRENT_RESULT = data.result;
+  renderResults();
+}
+
+function renderResults() {
+  if (!CURRENT_RESULT) {
+    document.getElementById('summary-cards').innerHTML = `
+      <div class="col-span-5 text-center py-16 text-muted text-sm">
+        No scan run yet this session — go to <button onclick="switchView('new-scan')" class="text-accent underline">New Scan</button> to run one against the local vulnerable_target app.
+      </div>`;
+    document.getElementById('severity-filters').innerHTML = '';
+    document.getElementById('findings-table').innerHTML = '';
+    return;
+  }
+
+  const findings = CURRENT_RESULT.findings || [];
+  const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  findings.forEach(f => counts[f.severity] = (counts[f.severity] || 0) + 1);
+
+  document.getElementById('summary-cards').innerHTML = `
+    <div class="bg-surface border border-border rounded-lg p-5">
+      <div class="text-muted text-xs font-mono uppercase tracking-wider mb-2">Endpoints Tested</div>
+      <div class="font-display font-bold text-3xl">${CURRENT_RESULT.endpoints_tested}</div>
+    </div>
+    <div class="bg-critical/10 border border-critical/30 rounded-lg p-5">
+      <div class="text-critical text-xs font-mono uppercase tracking-wider mb-2">Critical</div>
+      <div class="font-display font-bold text-3xl text-critical">${counts.Critical}</div>
+    </div>
+    <div class="bg-high/10 border border-high/30 rounded-lg p-5">
+      <div class="text-high text-xs font-mono uppercase tracking-wider mb-2">High</div>
+      <div class="font-display font-bold text-3xl text-high">${counts.High}</div>
+    </div>
+    <div class="bg-medium/10 border border-medium/30 rounded-lg p-5">
+      <div class="text-medium text-xs font-mono uppercase tracking-wider mb-2">Medium</div>
+      <div class="font-display font-bold text-3xl text-medium">${counts.Medium}</div>
+    </div>
+    <div class="bg-surface border border-border rounded-lg p-5">
+      <div class="text-muted text-xs font-mono uppercase tracking-wider mb-2">Risk Score</div>
+      <div class="font-display font-bold text-3xl text-critical">${CURRENT_RESULT.risk_score}<span class="text-base text-faint">/100</span></div>
+    </div>
+  `;
+
+  document.getElementById('severity-filters').innerHTML = ['All', 'Critical', 'High', 'Medium', 'Low'].map(s => `
+    <button onclick="setFilter('${s}')" data-filter="${s}" class="filter-btn text-xs font-mono font-bold px-3 py-1.5 rounded transition-colors ${s === activeFilter ? 'bg-accent text-accent-dark' : 'bg-surface-hi text-muted hover:text-text'}">${s.toUpperCase()}</button>
+  `).join('');
+
+  renderFindingsTable();
+}
+
+function setFilter(sev) {
+  activeFilter = sev;
+  renderResults();
+}
+
+function renderFindingsTable() {
+  const findings = (CURRENT_RESULT && CURRENT_RESULT.findings) || [];
+  const rows = findings.filter(f => activeFilter === 'All' || f.severity === activeFilter);
+  document.getElementById('findings-table').innerHTML = rows.map(f => `
+    <tr class="row-hover border-b border-border last:border-0 transition-colors" onclick="openDetail(${f.id})">
+      <td class="px-6 py-4">${severityBadge(f.severity)}</td>
+      <td class="px-6 py-4 font-mono text-xs text-text">${f.endpoint}</td>
+      <td class="px-6 py-4 text-sm">${f.vuln}</td>
+      <td class="px-6 py-4 text-xs text-muted">${f.owasp}</td>
+      <td class="px-6 py-4 text-xs">
+        <span class="px-2 py-1 rounded ${f.status === 'Confirmed' ? 'bg-low/10 text-low' : 'bg-medium/10 text-medium'} font-medium">${f.status}</span>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ---- Detail ----
+function openDetail(id) {
+  const f = (CURRENT_RESULT.findings || []).find(x => x.id === id);
+  if (!f) return;
+
+  document.getElementById('detail-header').innerHTML = `
+    <div class="flex items-center gap-3 mb-3">
+      ${severityBadge(f.severity)}
+      <span class="text-xs font-mono text-faint px-2 py-1 bg-surface-raised rounded">${f.owasp}</span>
+      <span class="text-xs font-mono text-faint px-2 py-1 bg-surface-raised rounded">confidence: ${f.confidence}</span>
+      <span class="text-xs font-mono text-faint px-2 py-1 bg-surface-raised rounded">source: ${f.source}</span>
+    </div>
+    <h1 class="font-display font-bold text-2xl mb-1">${f.vuln}</h1>
+    <p class="font-mono text-sm text-muted">${f.endpoint}</p>
+  `;
+
+  document.getElementById('detail-body').innerHTML = `
+    <div class="flex flex-col gap-4">
+      <div class="bg-surface border border-border rounded-lg overflow-hidden">
+        <div class="px-5 py-3 bg-surface-raised border-b border-border font-mono text-xs text-muted">REQUEST</div>
+        <pre class="p-5 font-mono text-xs text-accent whitespace-pre-wrap leading-relaxed">${f.request}</pre>
+      </div>
+      <div class="bg-surface border border-border rounded-lg overflow-hidden">
+        <div class="px-5 py-3 bg-surface-raised border-b border-border font-mono text-xs text-muted">RESPONSE</div>
+        <pre class="p-5 font-mono text-xs text-muted whitespace-pre-wrap leading-relaxed">${f.response}</pre>
+      </div>
+    </div>
+    <div class="flex flex-col gap-4">
+      <div class="bg-surface border border-border rounded-lg p-5">
+        <div class="flex items-center gap-2 font-mono text-xs text-muted uppercase tracking-wider mb-3">
+          <span class="material-symbols-outlined text-[16px] text-accent">psychology</span> How this was found
+        </div>
+        <p class="text-sm text-text leading-relaxed">${f.source === 'direct_probe' ? 'Confirmed by a direct logic/behavioral probe (not the ML classifier) — this vulnerability class needs an explicit check rather than response-diffing.' : f.source === 'llm' ? 'Test case drafted by an LLM grounded in the retrieved OWASP pattern, then classified by the RandomForest response-feature model.' : 'Test case generated from the retrieved OWASP template, then classified as vulnerable by the RandomForest response-feature model.'}</p>
+      </div>
+      <div class="bg-low/5 border border-low/20 rounded-lg p-5">
+        <div class="flex items-center gap-2 font-mono text-xs text-low uppercase tracking-wider mb-3">
+          <span class="material-symbols-outlined text-[16px]">build</span> OWASP Category
+        </div>
+        <p class="text-sm text-text leading-relaxed">${f.owasp} (${f.owasp_id})</p>
+      </div>
+    </div>
+  `;
+
+  switchView('detail');
+}
+
+// ---- History (sample data — see note above) ----
+function renderHistory() {
+  document.getElementById('history-table').innerHTML = HISTORY.map((h) => `
+    <tr class="border-b border-border last:border-0">
+      <td class="px-6 py-4 font-mono text-xs text-muted">${h.date}</td>
+      <td class="px-6 py-4 font-mono text-xs">${h.target}</td>
+      <td class="px-6 py-4 text-sm">${h.endpoints}</td>
+      <td class="px-6 py-4 text-sm">${h.findings}</td>
+      <td class="px-6 py-4">
+        <span class="font-mono font-bold text-sm text-${h.color}">${h.risk}<span class="text-faint text-xs">/100</span></span>
+      </td>
+      <td class="px-6 py-4">
+        <span class="text-xs font-mono text-faint">sample data</span>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ---- Init ----
+renderOwaspGrid();
+renderResults();
+renderHistory();
+</script>
+</body>
+</html>

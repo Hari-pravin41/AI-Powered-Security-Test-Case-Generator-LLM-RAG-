@@ -1,0 +1,147 @@
+[
+  {
+    "id": "A01",
+    "category": "Broken Access Control",
+    "description": "Restrictions on what authenticated users are allowed to do are not properly enforced. Attackers can access other users' accounts, view sensitive files, modify data, or change access rights by manipulating IDs, tokens, or URLs.",
+    "keywords": ["authorization", "access control", "IDOR", "BOLA", "object level", "ownership", "privilege escalation", "role", "permission"],
+    "test_patterns": [
+      {
+        "name": "Broken Object Level Authorization (BOLA)",
+        "method": "reference an object ID belonging to another user/account and check whether the API still serves or mutates it",
+        "payload_template": "Swap the resource ID in the URL/body for one owned by a different account, keep the current user's auth token"
+      },
+      {
+        "name": "Forced browsing / missing function-level auth",
+        "method": "call an admin-only or elevated endpoint with a low-privilege token",
+        "payload_template": "Send the request with a standard user token against an endpoint expected to require admin role"
+      }
+    ]
+  },
+  {
+    "id": "A02",
+    "category": "Cryptographic Failures",
+    "description": "Sensitive data is exposed due to weak or missing encryption in transit or at rest, or because it leaks through verbose error messages, logs, or headers.",
+    "keywords": ["encryption", "tls", "sensitive data", "PII", "stack trace", "error message", "leak", "plaintext"],
+    "test_patterns": [
+      {
+        "name": "Sensitive data in error responses",
+        "method": "trigger a server error (invalid ID, malformed payload) and inspect the response body for stack traces, SQL, or PII",
+        "payload_template": "Request a resource with an out-of-range or malformed ID and inspect the 4xx/5xx body"
+      }
+    ]
+  },
+  {
+    "id": "A03",
+    "category": "Injection",
+    "description": "Untrusted input is passed to an interpreter (SQL, NoSQL, OS command, LDAP) as part of a command or query, allowing an attacker to alter the intended query or execute unintended commands.",
+    "keywords": ["sql injection", "sqli", "nosql", "command injection", "query", "sanitize", "parameterized", "tautology"],
+    "test_patterns": [
+      {
+        "name": "SQL Injection via query/body parameter",
+        "method": "inject SQL metacharacters/tautologies into string parameters and compare response size/content against a baseline request",
+        "payload_template": "' OR '1'='1"
+      },
+      {
+        "name": "Command injection via filename/path parameter",
+        "method": "inject shell metacharacters into parameters that may reach a filesystem or shell call",
+        "payload_template": "; id"
+      }
+    ]
+  },
+  {
+    "id": "A04",
+    "category": "Insecure Design",
+    "description": "Missing or ineffective security controls at the design level — such as unrestricted field updates (mass assignment) or business logic that assumes trusted input.",
+    "keywords": ["mass assignment", "business logic", "design flaw", "trust boundary", "privileged field"],
+    "test_patterns": [
+      {
+        "name": "Mass assignment of privileged fields",
+        "method": "add extra, privileged fields (e.g. role, isAdmin, balance) to a write request that a normal user shouldn't be able to set",
+        "payload_template": "Add \"role\": \"admin\" to a profile update payload"
+      }
+    ]
+  },
+  {
+    "id": "A05",
+    "category": "Security Misconfiguration",
+    "description": "Missing security hardening, default credentials, verbose error handling, or unnecessary features/headers enabled, giving attackers extra information or attack surface.",
+    "keywords": ["headers", "configuration", "default credentials", "verbose", "debug mode", "cors", "hsts"],
+    "test_patterns": [
+      {
+        "name": "Missing security headers",
+        "method": "inspect response headers for Strict-Transport-Security, X-Content-Type-Options, Content-Security-Policy",
+        "payload_template": "Baseline GET request, inspect headers only"
+      },
+      {
+        "name": "Version / stack disclosure",
+        "method": "inspect Server / X-Powered-By headers for version strings",
+        "payload_template": "Baseline GET request, inspect headers only"
+      }
+    ]
+  },
+  {
+    "id": "A06",
+    "category": "Vulnerable and Outdated Components",
+    "description": "Use of libraries, frameworks, or components with known vulnerabilities, often revealed by version disclosure in headers or error pages.",
+    "keywords": ["dependency", "cve", "outdated", "version", "library", "framework"],
+    "test_patterns": [
+      {
+        "name": "Component version fingerprinting",
+        "method": "collect framework/server version strings from headers and error pages to cross-reference against known CVEs",
+        "payload_template": "Baseline GET request, inspect headers and error responses"
+      }
+    ]
+  },
+  {
+    "id": "A07",
+    "category": "Identification and Authentication Failures",
+    "description": "Weaknesses in authentication flows — missing rate limiting on login, weak session handling, or predictable credentials — that allow account takeover.",
+    "keywords": ["authentication", "login", "brute force", "rate limit", "session", "credential stuffing", "lockout"],
+    "test_patterns": [
+      {
+        "name": "Missing rate limiting on login",
+        "method": "send repeated failed login attempts against a single account and check for lockout, CAPTCHA, or 429 responses",
+        "payload_template": "Repeat POST /login with incorrect password N times in a short window"
+      }
+    ]
+  },
+  {
+    "id": "A08",
+    "category": "Software and Data Integrity Failures",
+    "description": "Code and infrastructure that does not verify integrity, such as accepting unsigned updates or deserializing untrusted data.",
+    "keywords": ["integrity", "deserialization", "signature", "unsigned", "supply chain"],
+    "test_patterns": [
+      {
+        "name": "Unsigned/unverified payload acceptance",
+        "method": "submit a payload with a missing or invalid integrity signature/checksum where one is expected",
+        "payload_template": "Omit or corrupt an expected signature/checksum header"
+      }
+    ]
+  },
+  {
+    "id": "A09",
+    "category": "Security Logging and Monitoring Failures",
+    "description": "Insufficient logging, monitoring, or alerting means breaches and abuse go undetected for long periods.",
+    "keywords": ["logging", "monitoring", "alerting", "audit trail", "detection"],
+    "test_patterns": [
+      {
+        "name": "No anomaly signal on abusive traffic",
+        "method": "generate an obviously abusive traffic pattern (rapid repeated failed auth, scraping) and check for any observable throttling/alerting behavior",
+        "payload_template": "Burst of requests in a short window, observe for 429/blocking behavior as a proxy for monitoring"
+      }
+    ]
+  },
+  {
+    "id": "A10",
+    "category": "Server-Side Request Forgery",
+    "description": "The server fetches a remote resource based on user-supplied input without validating the destination, allowing attackers to reach internal services.",
+    "keywords": ["ssrf", "url fetch", "webhook", "internal service", "metadata endpoint"],
+    "test_patterns": [
+      {
+        "name": "SSRF via user-supplied URL",
+        "method": "supply an internal/loopback URL to any parameter that triggers a server-side fetch (webhooks, image-fetch, URL preview)",
+        "payload_template": "http://127.0.0.1:PORT/internal-only-path"
+      }
+    ]
+  }
+]
